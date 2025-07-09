@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 import requests
 from io import BytesIO
 import os
+from mimetypes import guess_type
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 
@@ -21,11 +23,16 @@ def identify():
         img_resp = requests.get(image_url)
         img_data = BytesIO(img_resp.content)
 
+        parsed = urlparse(image_url)
+        filename = os.path.basename(parsed.path)
+        mimetype = guess_type(filename)[0] or 'application/octet-stream'
+
         files = {
-            'images': ('plant.jpg', img_data, 'image/jpeg')
+            'images': (filename, img_data, mimetype)
         }
+        
         payload = {
-            'organs': organs
+            'organs': [organs]  # 🔧 必须是列表形式
         }
 
         response = requests.post(plantnet_api, files=files, data=payload)
