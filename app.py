@@ -3,6 +3,11 @@ import requests
 from io import BytesIO
 import os
 import mimetypes
+import asyncio
+import uuid
+import edge_tts
+from flask import send_file
+
 
 app = Flask(__name__)
 
@@ -69,6 +74,35 @@ def identify():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ====================
+# 新增：俄语语音合成接口
+# ====================
+AUDIO_DIR = "audios"
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+@app.route("/speak", methods=["GET"])
+def speak():
+    text = request.args.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "Missing 'text' parameter"}), 400
+
+    # 用 text 内容生成文件名（简单 hash 缓存）
+    safe_filename = text.replace(" ", "_")[:50]
+    filename = f"{safe_filename}_{uuid.uuid4().hex[:8]}.mp3"
+    filepath = os.path.join(AUDIO_DIR, filename)
+
+    # 合成语音
+    voice = "ru-RU-SvetlanaNeural"  # 可改为 ru-RU-DmitryNeural 男声
+    try:
+        asyncio.run(edge_tts.Communicate(text, voice).save(filepath))
+    except Exception as e:
+        return jsonify({"error": f"TTS failed: {str(e)}"}), 500
+
+    # 返回音频文件
+    return send_file(filepath, mimetype="audio/mpeg")
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
