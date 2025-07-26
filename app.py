@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import requests
 from io import BytesIO
 import os
@@ -6,12 +6,13 @@ import mimetypes
 import asyncio
 import uuid
 import edge_tts
-from flask import send_file
-
 
 app = Flask(__name__)
 app.static_folder = "audios"
 
+# ====================
+# 植物识别接口
+# ====================
 @app.route("/identify", methods=["POST"])
 def identify():
     try:
@@ -30,7 +31,6 @@ def identify():
             return jsonify({"error": "Failed to download image"}), 400
         img_data = BytesIO(img_resp.content)
 
-        # 根据 URL 后缀判断文件类型
         ext = os.path.splitext(image_url)[-1].lower()
         mime_type = mimetypes.types_map.get(ext, 'image/jpeg')
 
@@ -38,12 +38,9 @@ def identify():
             'images': (f'plant{ext}', img_data, mime_type)
         }
 
-        # 如果用户手动指定 organ，只尝试一次
         organ_list = [organs] if organs else ["leaf", "flower"]
-        leaf_result = None
-        leaf_score = -1
-        flower_result = None
-        flower_score = -1
+        leaf_result = flower_result = None
+        leaf_score = flower_score = -1
 
         for organ_try in organ_list:
             payload = {'organs': organ_try}
@@ -60,12 +57,10 @@ def identify():
                         leaf_score = best_score
                         if best_score >= 0.7:
                             return jsonify(result)
-
                     elif organ_try == "flower":
                         flower_result = result
                         flower_score = best_score
 
-        # 比较两个 organ 的识别结果
         if flower_score > leaf_score and flower_result:
             return jsonify(flower_result)
         elif leaf_result:
@@ -78,7 +73,7 @@ def identify():
 
 
 # ====================
-# 新增：俄语语音合成接口
+# 俄语语音合成接口
 # ====================
 AUDIO_DIR = "audios"
 os.makedirs(AUDIO_DIR, exist_ok=True)
@@ -89,8 +84,8 @@ def speak():
     if not text:
         return jsonify({"error": "Missing 'text' parameter"}), 400
 
-    safe_filename = text.replace(" ", "_")[:50]
-    filename = f"{safe_filename}_{uuid.uuid4().hex[:8]}.mp3"
+    # 更安全的文件名（不暴露用户输入）
+    filename = f"{uuid.uuid4().hex}.mp3"
     filepath = os.path.join(AUDIO_DIR, filename)
 
     voice = "ru-RU-SvetlanaNeural"
@@ -99,7 +94,6 @@ def speak():
     except Exception as e:
         return jsonify({"error": f"TTS failed: {str(e)}"}), 500
 
-    # 构造公网访问链接（Render 自动处理 /audios）
     file_url = f"https://{request.host}/audios/{filename}"
     return jsonify({
         "audio_url": file_url,
@@ -107,6 +101,20 @@ def speak():
     })
 
 
+# ====================
+# 新增：音频播放支持（通过链接访问）
+# ====================
+@app.route("/audios/<filename>", methods=["GET"])
+def get_audio(filename):
+    filepath = os.path.join(AUDIO_DIR, filename)
+    if not os.path.isfile(filepath):
+        return jsonify({"error": "Audio file not found"}), 404
+    return send_file(filepath, mimetype="audio/mpeg")
+
+
+# ====================
+# 启动入口
+# ====================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
