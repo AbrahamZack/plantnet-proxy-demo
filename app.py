@@ -88,20 +88,22 @@ def speak():
     if not text:
         return jsonify({"error": "Missing 'text' parameter"}), 400
 
-    # 用 text 内容生成文件名（简单 hash 缓存）
     safe_filename = text.replace(" ", "_")[:50]
     filename = f"{safe_filename}_{uuid.uuid4().hex[:8]}.mp3"
     filepath = os.path.join(AUDIO_DIR, filename)
 
-    # 合成语音
-    voice = "ru-RU-SvetlanaNeural"  # 可改为 ru-RU-DmitryNeural 男声
+    voice = "ru-RU-SvetlanaNeural"
     try:
         asyncio.run(edge_tts.Communicate(text, voice).save(filepath))
     except Exception as e:
         return jsonify({"error": f"TTS failed: {str(e)}"}), 500
 
-    # 返回音频文件
-    return send_file(filepath, mimetype="audio/mpeg")
+    # 构造公网访问链接（Render 自动处理 /audios）
+    file_url = f"https://{request.host}/audios/{filename}"
+    return jsonify({
+        "audio_url": file_url,
+        "text": text
+    })
 
 
 if __name__ == "__main__":
