@@ -10,6 +10,7 @@ from flask import send_file
 
 
 app = Flask(__name__)
+app.static_folder = "audios"
 
 @app.route("/identify", methods=["POST"])
 def identify():
